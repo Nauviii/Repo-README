@@ -361,9 +361,7 @@ Logistic Regression digunakan sebagai **baseline model** untuk membandingkan per
 #### **Intuisi Matematis**
 Model menghitung probabilitas fraud menggunakan fungsi logistik:
 
-\[
-P(y = 1 \mid x) = \sigma(w^T x + b)
-\]
+P(y = 1 | x) = σ(wᵀx + b)
 
 Karena hanya mempelajari pola **linear**, model ini digunakan sebagai pembanding untuk model gradient boosting yang lebih kompleks.
 
@@ -528,9 +526,7 @@ Meskipun model menghasilkan probabilitas fraud, threshold default **0.5 tidak op
 
 #### **Threshold F1 (Balance Precision–Recall)**
 
-\[
-F1 = \frac{2PR}{P + R}
-\]
+F1 = (2 * P * R) / (P + R)
 
 Cocok untuk:
 - Sistem auto-block
@@ -540,9 +536,7 @@ Cocok untuk:
 
 #### **Threshold F2 (Recall Lebih Ditekankan)**
 
-\[
-F2 = \frac{5PR}{4P + R}
-\]
+F2 = (5 * P * R) / (4 * P + R)
 
 Cocok untuk:
 - Kasus di mana false negative sangat mahal
@@ -552,9 +546,7 @@ Cocok untuk:
 
 #### **Cost-Based Threshold (Biaya Fraud vs Review)**
 
-\[
-Cost = FN \times C_{fn} + FP \times C_{fp}
-\]
+Cost = FN * C_fn + FP * C_fp
 
 Dimana:
 - **FN lebih mahal** dari **FP**
@@ -574,80 +566,238 @@ Dimana:
 
 ## Evaluation
 
-### Metrik yang Digunakan
+Evaluasi dilakukan menggunakan beberapa metrik yang relevan dengan konteks fraud detection, yaitu masalah klasifikasi dengan data sangat imbalanced.  
+Pada kasus ini, akurasi bukan metrik yang tepat, sehingga fokus evaluasi diarahkan pada:
 
 - Precision  
 - Recall  
 - F1-score  
-- AUPRC  
-- ROC Curve  
-- Precision@K  
+- AUPRC (Area Under Precision-Recall Curve)  
+- Precision@K (operasional, top-risk transactions)  
 - Confusion Matrix  
-- Cost-based Evaluation  
 
-### Precision
+Pemilihan metrik ini selaras dengan problem statement:
+
+**Bagaimana mendeteksi fraud secara akurat dengan meminimalkan kerugian finansial, tanpa mengganggu user legitimate?**
+
+---
+
+### 1. Penjelasan Metrik yang Digunakan
+
+#### **Precision**
+
+Mengukur berapa banyak prediksi fraud yang benar-benar fraud.
+
 $$
 \text{Precision} = \frac{TP}{TP + FP}
 $$
 
-### Recall
+Tinggi → sedikit false positive  
+(Relevan untuk menjaga kenyamanan user dan menghindari blokir salah sasaran.)
+
+---
+
+#### **Recall**
+
+Mengukur berapa banyak fraud yang berhasil ditangkap model.
+
 $$
 \text{Recall} = \frac{TP}{TP + FN}
 $$
 
-### F1-score
+Tinggi → sedikit fraud lolos  
+(Relevan untuk meminimalkan kerugian finansial.)
+
+---
+
+#### **F1-score**
+
+Harmonic mean precision & recall.
+
 $$
 F1 = \frac{2 \times \text{Precision} \times \text{Recall}}{\text{Precision} + \text{Recall}}
 $$
 
-### Hasil Tahap 1
-
-- **Precision terbaik → XGBoost**  
-- **F1-score terbaik → LightGBM**  
-- **Recall terbaik → CatBoost**  
-
-### Hasil Tahap 2 – Threshold Tuning
-
-| Threshold | Kegunaan |
-|----------|----------|
-| F1 (0.9533) | Auto-blocking |
-| Cost (0.4560) | Analyst review |
-| Hybrid | block / review / approve |
-
-Hybrid merupakan strategi paling realistis di industri:
-- prob > 0.95 → block  
-- 0.45 – 0.95 → review  
-- prob < 0.45 → approve  
+Relevan ketika ingin keseimbangan antara mendeteksi fraud dan menjaga pengalaman pelanggan.
 
 ---
 
-## Kesimpulan Akhir
+#### **AUPRC – Area Under Precision Recall Curve**
 
-Proyek ini berhasil membangun sistem deteksi fraud yang:
+Lebih stabil untuk data imbalanced dibanding ROC AUC.
 
-- bekerja pada dataset besar & sangat imbalanced,  
-- memiliki pipeline rapi & bebas leakage,  
-- memanfaatkan GPU training,  
-- menghasilkan model LightGBM dengan F1-score terbaik,  
-- dapat disesuaikan melalui threshold tuning untuk berbagai skenario bisnis:  
-  - blocking otomatis,  
-  - alerting analis,  
-  - hybrid decision engine.
+AUPRC tinggi → model mampu membedakan fraud/non-fraud di berbagai threshold.
 
-Model siap untuk dikembangkan lebih lanjut menuju:
-- real-time scoring,
-- monitoring performa,
-- deployment produksi.
+Sangat penting pada dataset fraud yang hanya **2.2%**.
 
 ---
 
-## Future Work
+#### **Confusion Matrix**
 
-- Integrasi real-time anomaly detection  
-- SHAP-based interpretability  
-- Fraud dashboard analytics  
-- Deployment FastAPI/MLflow  
-- Auto-retraining & drift monitoring  
+Memberikan gambaran real-time terkait:
+
+- Fraud berhasil ditangkap (TP)  
+- Fraud yang lolos (FN)  
+- User normal yang salah diblokir (FP)  
+- User normal yang aman (TN)
 
 ---
 
+### 2. Hasil Evaluasi Tahap 1 (Default Threshold)
+
+Pada tahap ini threshold masih 0.5, sehingga performa model menunjukkan karakter asli tanpa penyesuaian bisnis.
+
+#### **Ringkasan Performa**
+
+| Model                | Precision (Fraud) | Recall (Fraud) | F1-score (Fraud) | Catatan                |
+|----------------------|-------------------|----------------|------------------|-------------------------|
+| Logistic Regression  | 0.14              | 0.83           | 0.24             | Banyak false positive   |
+| XGBoost              | 0.49              | 0.82           | 0.61             | Precision tertinggi     |
+| LightGBM             | 0.45              | 0.83           | 0.58             | F1 paling stabil        |
+| CatBoost             | 0.31              | 0.86           | 0.45             | Recall tertinggi        |
+
+#### **Interpretasi Bisnis Tahap 1**
+
+- Logistic Regression: recall bagus, tetapi precision sangat buruk → banyak memblokir user normal.  
+- XGBoost: precision tertinggi → cocok jika ingin menghindari false positive.  
+- LightGBM: F1-score terbaik → model paling balanced.  
+- CatBoost: recall tertinggi → cocok menangkap fraud maksimal.  
+
+**Masalah utama:** threshold 0.5 tidak optimal pada data imbalanced → banyak fraud yang masih lolos.  
+Inilah alasan dilakukannya **Threshold Tuning**.
+
+---
+
+### 3. Hasil Evaluasi Tahap 2 — Threshold Tuning
+
+Pada tahap ini ditentukan threshold optimal berdasarkan:
+
+- F1  
+- F2  
+- Cost-based Optimization  
+
+Berikut hasil terbaik masing-masing model:
+
+---
+
+#### **Logistic Regression (Setelah Tuning)**
+
+**Best F1 Threshold (0.9456)**  
+- Precision: 0.61  
+- Recall: 0.48  
+- F1: 0.54  
+
+→ Fraud lolos menurun, false positive menurun signifikan.
+
+**Best Cost Threshold (0.6180)**  
+- Precision: 0.18  
+- Recall: 0.79  
+
+→ Cocok untuk *review queue*, bukan auto-block.
+
+---
+
+#### **XGBoost (Setelah Tuning)**
+
+**Best F1 (0.9533)**  
+- Precision: 0.92  
+- Recall: 0.66  
+- F1: 0.77  
+
+→ Model paling aman untuk auto-block (FP rendah, TP tinggi).  
+→ Fraud lolos turun drastis.
+
+**Best Cost (0.4560)**  
+- Precision: 0.46  
+- Recall: 0.83  
+
+→ Cocok untuk *review queue*.
+
+---
+
+#### **LightGBM (Setelah Tuning)**
+
+**Best F1 (0.9420)**  
+- Precision: 0.90  
+- Recall: 0.69  
+- F1: 0.78 → **TERBAIK**
+
+→ Trade-off precision–recall paling ideal.
+
+**Best Cost (0.5720)**  
+- Precision: 0.53  
+- Recall: 0.82  
+- F1: 0.64  
+
+→ Model paling seimbang secara keseluruhan.
+
+---
+
+#### **CatBoost (Setelah Tuning)**
+
+**Best F1 (0.9053)**  
+- Precision: 0.75  
+- Recall: 0.73  
+- F1: 0.74  
+
+**Best Cost (0.6580)**  
+- Precision: 0.46  
+- Recall: 0.83  
+- F1: 0.59  
+
+→ Tetap menjadi model dengan recall tertinggi.
+
+---
+
+### 4. Kesimpulan Evaluasi
+
+#### **Model terbaik secara keseluruhan → LightGBM**
+- F1-score terbaik  
+- Trade-off paling stabil  
+- Performa konsisten setelah tuning  
+
+#### **Model precision terbaik → XGBoost**
+- Cocok untuk auto-blocker  
+- Minim false positives  
+
+#### **Model recall terbaik → CatBoost**
+- Cocok jika tujuan utama adalah menangkap sebanyak mungkin fraud  
+
+#### **Logistic Regression**
+- Baik sebagai baseline  
+- Setelah tuning membaik, tetapi tetap kalah dari tree-based models  
+
+---
+
+### 5. Kenapa Threshold Tuning Sangat Berpengaruh?
+
+Karena fraud hanya **2.2%**, threshold default 0.5 menyebabkan:
+
+- Banyak fraud lolos  
+- Keputusan bisnis tidak optimal  
+- Kerugian finansial meningkat  
+
+Threshold tuning berhasil:
+
+✔ Menaikkan recall fraud signifikan  
+✔ Menurunkan false positives  
+✔ Membuat decision engine lebih akurat  
+✔ Menyesuaikan model dengan kebutuhan produksi  
+
+#### **Use-case → Threshold**
+
+| Use Case             | Threshold |
+|----------------------|-----------|
+| Auto-block           | F1        |
+| Analyst review queue | Cost      |
+| Hybrid strategy      | F1 + Cost |
+
+---
+
+### 6. Final Insight Evaluasi
+
+- Semua model tree-boosting jauh lebih unggul daripada Logistic Regression.  
+- Threshold tuning adalah kunci performa dalam fraud detection.  
+- **LightGBM** adalah pilihan paling stabil untuk industri.  
+- **XGBoost** cocok untuk skenario *zero-tolerance false positive*.  
+- **CatBoost** sangat baik jika fokus pada *fraud catching*.  
